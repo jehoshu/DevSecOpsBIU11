@@ -203,7 +203,7 @@ Read more on the `fsck` command [here](https://git-scm.com/docs/git-fsck).
 git remote add origin git@github.com:<github-username>/<repo-name>.git
 ```
 Note: you can add multiple remotes, just choose name other than `origin`. We will later see where multiple remotes can be useful.
-3. Try to push your changes into GitHub by `git push origin master` and expect a `Permission denied (publickey)` error.
+3. Try to push your changes into GitHub by `git push -u origin master` and expect a `Permission denied (publickey)` error.
    In order to be able to communicate with GitHub, an SSH key pair (public and private) is needed:
    1. Generate a pair by `ssh-keygen -t ed25519 -C "your_email@example.com"`. Make sure your keys are stored in a safe place.
    2. Put your **public key** in GitHub (see [here](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) how)
@@ -213,10 +213,15 @@ Note: you can add multiple remotes, just choose name other than `origin`. We wil
       ```
 4. Push again your changes to remote by:
 ```shell
-git push origin main
+git push -u origin main
 ``` 
 
 ## Fork a remote repo and add `upstream`
 
-TBD
+1. From GitHub, fork our [shared repo](https://github.com/alonitac/DevSecOpsBIU11.git).
+2. Clone it locally (using PyCharm is preferred).
+3. Add the original repo (a.k.a. `upstream`) as a remote by:
+```shell
+git remote add upstream https://github.com/alonitac/DevSecOpsBIU11.git
+```
 
