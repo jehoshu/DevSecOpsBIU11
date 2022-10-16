@@ -185,7 +185,7 @@ We would like to deploy it in the k8s cluster.
 
 ### The YouTube chat app
 
-1. For simplicity, you are given the app version that designed to talk with an external MySQL db. The code can be found in `app-multi`, so no need to switch branches. 
+1. For simplicity, you are given the app version that designed to talk with an external MySQL db. The code can be found in `app-multi` in branch `main`, so no need to switch branches. 
 2. Build the image according to the Dockerfile in `app-multi`. 
 3. Deploy it using the `youtube-chat-app-multi.yaml` configuration file (does it work? why?).
 4. We would like to create a cluster [Secret](https://kubernetes.io/docs/concepts/configuration/secret/) object to store the root user password for the MySQL database. Review the secret object in `k8s/mysql-secret.yaml` and apply it:
@@ -193,30 +193,196 @@ We would like to deploy it in the k8s cluster.
 kubectl apply -f k8s/mysql-secret.yaml
 ```
 5. Deploy the MySQL deployment by applying `mysql-deployment.yaml` configuration file.
-6. Test your app.
+6. Test your app (see **Visit the app** section below).
 
-7. Now let's say we want to allow maximum of 50 connection to our DB. We would like to find a useful way to "inject" this config to our pre-built `mysql:5.7` image. For that, the [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) object can assist.
-   In the `mysql` Docker image, custom configurations for MySQL can be placed in `/etc/mysql/mysql.conf.d` directory, any file ends with `.cnf` under this directory, will be applied as an additional configurations to MySQL. But how can we "insert" a custom file to the image? keep reading...
+7. Now let's say we want to allow maximum of 50 connection to our DB. We would like to find a useful way to "inject" this config to our pre-built `mysql:5.7` image (we surely don't want to build the MySQL image ourselves). For that, the [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) object can assist.
+   In the `mysql` Docker image, custom configurations for the MySQL server can be placed in `/etc/mysql/mysql.conf.d` directory, any file ends with `.cnf` under that directory, will be applied as an additional configurations to MySQL. But how can we "insert" a custom file to the image? keep reading...
 8. Review the ConfigMap object under `mysql-config.yaml`. And apply it.
 9. Comment **in** the two snippets in `mysql-deployment.yaml` and apply the changes. 
 
-[comment]: <> (## Visit the app )
+## Visit the app 
 
-[comment]: <> (```text)
+How can we visit an app running in the cluster?
 
-[comment]: <> (kubectl exec )
+#### Using `kubectl`
 
-[comment]: <> (kubectl port-forward)
+You can use `kubectl port-forward` command to forward specific pod and port to your local machine, so you can visit the app under the `localhost:<port>` address.
+This type of connection can be useful for pod debugging and obviously should not be used outside the borders of the development team.
 
-[comment]: <> (nodeport &#40; 3 types of services&#41;)
+Perform
+```shell
+kubectl port-forward svc/<service-name> <local-port>:<service-port> 
+```
+In our case:
+   - `<service-name>` is `youtube-app-service`.
+   - `<service-port>` is `8080`.
+   - `<local-port>` can be `8083` (or any other free port on your local machine.
 
-[comment]: <> (```)
+#### Using Service 
 
-[comment]: <> (## The [StatefulSet]&#40;&#41; and Data persistence)
+As you are already know, k8s [Service](https://kubernetes.io/docs/concepts/services-networking/service/) is an abstract way to expose an application running on a set of Pods as a network service.
+Although each Pod has a unique IP address, those IPs are not exposed outside the cluster without a Service.  
 
-[comment]: <> (## Helm)
+Services can be exposed in different ways by specifying a `type` in the ServiceSpec. We will review two types:
 
-[comment]: <> (## Fluentd )
+- `ClusterIP` (default) - Exposes the Service on an internal IP in the cluster. This type makes the Service only reachable from within the cluster.
+- `NodePort` - Exposes the Service on some port of each **Node** in the cluster. Makes a Service accessible from outside the cluster using <NodeIP>:<NodePort>.
+
+![](img/service-k8s.png)
+
+1. Under `k8s/youtube-chat-app-multi.yaml` edit the `youtube-app-service` service object to use the `NodePort` service type:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: youtube-app-service
+spec:
+  type: NodePort 
+  selector:
+    app: youtube-app
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30007
+```
+2. Apply the change.
+3. Use `minikube ip` to get the IP of Minikube "node" and visit the app in `http://<node-ip>:30007`
+
+## Data persistence and the StatefulSet
+
+The problem: the data of `mysql` deployment is not persistent.
+
+### (Optional - go over it if you feel comfortable with k8s core concepts) 1st try: [Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+
+A **PersistentVolume (PV)** is a piece of storage in the cluster that has been provisioned by an administrator or dynamically provisioned using [Storage Classes](https://kubernetes.io/docs/concepts/storage/storage-classes/).
+
+In this section, we create a `hostPath` PersistentVolume, it simulates a separate, independent logical "volume" in the host machine. Kubernetes supports hostPath for development and testing on a single-node cluster. A hostPath PersistentVolume uses a file or directory **on the Node** to emulate attached storage.
+In a production cluster, you would not use hostPath. Instead, a cluster administrator would provision a network resource like a Google Compute Engine persistent disk, an NFS share, or an Amazon Elastic Block Store volume.
+
+1. Review and apply `k8s/mysql-pv.yaml`. 
+   The configuration file specifies that the volume is at `/mnt/data` on the cluster's Node. The configuration also specifies a size of 3GB and an access mode of `ReadWriteOnce`, which means the volume can be mounted as read-write by a **single Node**.
+2. View information about the PersistentVolume:
+```shell
+kubectl get pv mysql-pv-volume
+```
+The output shows that the PersistentVolume has a `STATUS` of `Available`. This means it has not yet been bound to a PersistentVolumeClaim.
+
+Pods use **PersistentVolumeClaims** to request physical storage. We create a PersistentVolumeClaim that _requests_ a volume of at least 1GB that can provide read-write access for at least one Node.
+
+3. Review and apply `k8s/mysql-pv-claim.yaml`.  
+   After you've created the PersistentVolumeClaim, the Kubernetes control plane looks for a PersistentVolume that satisfies the claim's requirements. If the control plane finds a suitable PersistentVolume with the same StorageClass, it binds the claim to the volume.
+
+4. In `k8s/mysql-deployment.yaml` enter the following mount and volumes in their appropriate location:
+```yaml
+volumeMounts:
+   - name: config-volume
+     mountPath: /etc/mysql/mysql.conf.d
+   - name: mysql-data
+     mountPath: /var/lib/mysql
+```
+
+and 
+
+```yaml
+volumes:
+  - name: config-volume
+    configMap:
+      name: mysql-config
+  - name: mysql-data
+    persistentVolumeClaim:
+      claimName: mysql-pv-claim
+```
+5. Apply the changes. 
+
+While this solution works for a standalone DB stance, it won't work in case we want to run MySQL in multiple instances (and you want to...). Try to increase the `replicas` to `2` and investigate what happened.
+
+### 2nd (and successful) try: [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+
+Before we start, delete all the resources related to `mysql` from the previous try.
+
+Review and apply `k8s/mysql-stateful.yaml`.
+
+The address of MySQL will be: `mysql-0.mysql-svc-hl.default.svc.cluster.local:3306`
+
+## Helm
+
+Helm is the package manager for Kubernetes
+The main big 3 concepts of helm are:
+
+- A **Chart** is a Helm package. It contains all the resource definitions necessary to run an application, tool, or service inside of a Kubernetes cluster.
+- A **Repository** is the place where charts can be collected and shared.
+- A **Release** is an instance of a chart running in a Kubernetes cluster.
+
+[Install](https://helm.sh/docs/intro/install/) the Helm cli if you don't have.
+
+### Deploy MySQL using Helm
+
+Before we start, delete all the resources related to `mysql` from the previous try. 
+
+How relational databases are deployed in real-life applications?
+
+The following diagram shows a Multi-AZ DB cluster.
+
+![](img/mysql-multi-instance.png)
+
+With a Multi-AZ DB cluster, MySQL replicates data from the writer DB instance to both of the reader DB instances.
+When a change is made on the writer DB instance, it's sent to each reader DB instance.
+Acknowledgment from at least one reader DB instance is required for a change to be committed.
+Reader DB instances act as automatic failover targets and also serve read traffic to increase application read throughput.
+
+Let's review the Helm chart written by Bitnami for MySQL provisioning in k8s cluster.
+
+[https://github.com/bitnami/charts/tree/master/bitnami/mysql/#installing-the-chart](https://github.com/bitnami/charts/tree/master/bitnami/mysql/#installing-the-chart)
+
+1. Add the bitnami Helm repo to your local machine:
+```shell
+# or update if you have it already: `helm repo update bitnami`
+helm repo add bitnami https://charts.bitnami.com/bitnami
+```
+
+3. Review `k8s/mysql-helm-values.yaml`, change values or [add parameters](https://github.com/bitnami/charts/tree/master/bitnami/postgresql/#parameters) according to your need.
+4. Install the `mysql` chart
+```shell
+helm upgrade --install -f k8s/mysql-helm-values.yaml mysql bitnami/mysql
+```
+5. To delete this release:
+```shell
+helm delete mysql
+```
+
+## Stream Pod logs to Elasticsearch logs databases using FluentD
+
+### Fluentd introduced  
+
+[Fluentd](https://www.fluentd.org/) is an open source data collector for unified logging layer.
+Fluent allows you to unify data collection and consumption for a better use and understanding of data.
+
+Here is an illustration of how Fluent works in the k8s cluster?
+
+![](img/fluent.png)
+
+Fluentd runs in the cluster as a [DaemonSet](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/). A DaemonSet ensures that all nodes run a copy of a pod. That way, Fluentd can collect log information from every containerized applications easily in each k8s node.
+
+We will deploy the Fluentd chart to collect containers logs to send them to Elasticsearch database.
+
+1. Visit the Fluentd Helm chart at https://github.com/fluent/helm-charts/tree/main/charts/fluentd
+2. Add the helm repo
+```shell
+# or update if you have it already: `helm repo update fluent`
+helm repo add fluent https://fluent.github.io/helm-charts
+```
+
+3. Install the Fluentd chart by:
+```shell
+helm install fluentd fluent/fluentd
+```
+
+4. Watch and inspect the running containers under **Workloads** -> **DaemonSet**. Obviously, it doesn't work, as Fluent need to talk to an existed Elasticsearch database.  
+5. Elasticsearch db can be provisioned by applying `elasticsearch.yaml`.
+
+### Fluentd permissions in the cluster
+
+TBD 
 
 [comment]: <> (- service account)
 
@@ -224,13 +390,17 @@ kubectl apply -f k8s/mysql-secret.yaml
 
 [comment]: <> (- rolebinding)
 
-[comment]: <> (## Prometheus and Grafana)
+## Visualize logs with Grafana
 
+1. Review the objects in `grafana.yaml` and apply.
+2. Visit grafana service and configure the Elasticsearch database to view all cluster logs.
 
-[comment]: <> (# K8S exercise )
+## Split and deploy the Youtube chat app in microservices
 
-[comment]: <> (- multi-app &#40;worker and webserver&#41;)
+TBD 
 
-[comment]: <> (- helm rabbitmq )
+[comment]: <> (- Worker and web-server)
 
-[comment]: <> (- autoscale workers)
+[comment]: <> (- RabbitMQ )
+
+[comment]: <> (- Autoscale workers)
