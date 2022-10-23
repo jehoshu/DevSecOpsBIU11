@@ -1,27 +1,27 @@
 # Git Basics (commit, diff, branches)
 
-1.
-2.
-3.
-4.
-5.
-6.
-7.
-8.
-9.
-10.
-11.
-12.
-13.
-14.
-15.
-16.
+1.echo "1" >> abc.txt
+2.red
+3.red
+4.green, also in pycharm green, git commit -m "initial commit"
+5.echo "2" >> abc.txt
+6.the same color red, the changes in the working tree
+7.git diff main or master
+8.because there is nothing in the stage
+9. unknown revision or path not in the working tree
+10.git add abc.txt
+11.print nothing, because the file added to stage
+12.git diff main
+13.echo "3" >> abc.txt
+14.no, because git diff main show changes between the wt and main and diff staged show between wt and stage
+15.because one changes and commit and second not add and commit yet
+16.git reset --hard
 
 # Resolve conflicts
 
-1.
-2.
-3.
+1.git branch --list
+2.git branch feature/lambda_migration, git checkout feature/lambda_migration
+3.git merge feature/version1
 4.
 5.
    1.
