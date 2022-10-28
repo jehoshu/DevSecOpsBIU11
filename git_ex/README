@@ -22,18 +22,24 @@
 1.git branch --list
 2.git branch feature/lambda_migration, git checkout feature/lambda_migration
 3.git merge feature/version1
-4.
+4.conflict resolve
 5.
-   1.
+   1.    Merge branch 'feature/version2' into feature/lambda_migration
+
+    # Conflicts:
+    #       app.py
+
    2.
    3.
    4.
-   5.
-6.
+   5.resolve done
+6. On branch feature/lambda_migration
+nothing to commit, working tree clean
+
 
 # Cherry picking
 
-1.
+1. git branch feature/lambda_migration2
 2.
 3.
     1.
@@ -44,27 +50,43 @@
 
 # Changes in working tree and switch branches
 
-1.
-2.
-3.
-4.
-5.
-6.
+1. git checkout feature/lambda_migration2
+2. echo "Hello There" >> take.txt
+3. git checkout dev error: The following untracked working tree files would be overwritten by checkout:
+	take.txt
+Please move or remove them before you switch branches.
+Aborting
+
+4. git checkout --force dev
+5. On branch dev
+nothing to commit, working tree clean the file take.txt not contain my changes
+
+6. On branch feature/lambda_migration2
+nothing to commit, working tree clean
+the file deleted, force checkout It overrides/ignores all changes made in other branch
 
 # Reset
 
-1.
+1. git checkout reset_question
 2.
-   1.
-   2.
-   3.
-   4.
-3.
+   1. When using git reset --soft HEAD~1 you will remove the last commit from the current branch,
+    but the file changes will stay in your working tree. Also, the changes will stay on your index,
+     so following with a git commit will create a commit with the exact same changes as the commit you "removed" before.
+
+   2. This is the default mode and quite similar to soft.
+    When "removing" a commit with git reset HEAD~1 you will still keep the changes in your working tree but not on the index; so if you want to "redo" the commit,
+    you will have to add the changes ( git add ) before commiting.
+
+   3. When using git reset --hard HEAD~1 you will lose all uncommited changes and all untracked files in addition to the changes introduced in the last commit.
+   The changes won't stay in your working tree so doing a git status command will tell you that you don't have any changes in your repository.
+
+   4. The last commit will be removed from my Git history.
+3. Its specify the commit to undo which is “HEAD~1” in this case
 
 
 # Working with GitHub
 
-1.
-2.
-3.
-4.
+1. git init for_testing
+2. git remote add gitx https://github.com/jehoshu/for_testing.git
+3. git push -f gitx main | git push -f gitx dev
+4. https://github.com/jehoshu/for_testing.git
